@@ -7,9 +7,9 @@ import lombok.NoArgsConstructor;
 
 /**
  * DTO (Data Transfer Object) для данных о стране
- *
+ * <p>
  * Используется для передачи данных из REST Countries API
- *
+ * <p>
  * DTO vs Entity:
  * - Entity - данные для БД
  * - DTO - данные для передачи между слоями/системами
@@ -22,13 +22,11 @@ public class CountryDTO {
 
     /**
      * Название страны
-     * Пример: "United States"
      */
     private String name;
 
     /**
      * Код страны (ISO 3166-1 alpha-3)
-     * Пример: "USA", "RUS", "GBR"
      */
     private String code;
 
@@ -39,13 +37,11 @@ public class CountryDTO {
 
     /**
      * Столица
-     * Может быть null для некоторых территорий
      */
     private String capital;
 
     /**
      * Регион
-     * Примеры: "Europe", "Asia", "Americas"
      */
     private String region;
 

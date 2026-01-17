@@ -67,7 +67,7 @@ public class GameService {
     /**
      * Проверить ответ пользователя
      *
-     * @param sessionId ID игровой сессии
+     * @param sessionId  ID игровой сессии
      * @param userAnswer ответ пользователя
      * @return обновлённая игровая сессия
      */
@@ -150,7 +150,7 @@ public class GameService {
      * Получить последние N игр пользователя
      *
      * @param chatId Telegram chat ID
-     * @param limit количество игр
+     * @param limit  количество игр
      * @return список последних игр
      */
     @Transactional(readOnly = true)
@@ -200,7 +200,7 @@ public class GameService {
      * Получить самые сложные страны
      *
      * @param minAttempts минимальное количество попыток
-     * @param limit количество стран
+     * @param limit       количество стран
      * @return список самых сложных стран
      */
     @Transactional(readOnly = true)

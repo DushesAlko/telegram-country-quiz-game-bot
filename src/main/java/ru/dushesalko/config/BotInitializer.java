@@ -11,7 +11,7 @@ import ru.dushesalko.bot.TelegramBot;
 
 /**
  * Инициализация и регистрация Telegram бота
- *
+ * <p>
  * Этот класс регистрирует бота в Telegram API при старте приложения
  */
 @Component

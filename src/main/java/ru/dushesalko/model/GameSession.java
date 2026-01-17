@@ -8,7 +8,7 @@ import java.time.LocalDateTime;
 
 /**
  * Entity класс для игровой сессии
- *
+ * <p>
  * Хранит информацию о каждой попытке угадать страну
  */
 @Entity
@@ -32,7 +32,7 @@ public class GameSession {
      *
      * @ManyToOne - тип связи
      * @JoinColumn - внешний ключ в таблице game_sessions
-     *
+     * <p>
      * SQL: FOREIGN KEY (user_id) REFERENCES users(id)
      */
     @ManyToOne(fetch = FetchType.LAZY)
@@ -102,6 +102,6 @@ public class GameSession {
     public enum GameStatus {
         IN_PROGRESS,    // Игра в процессе
         COMPLETED,      // Завершена
-        ABANDONED       // Брошена (пользователь не ответил)
+        ABANDONED       // Брошена
     }
 }

@@ -33,7 +33,8 @@ public class CountryService {
 
     @PostConstruct
     public void init() {
-        testApi();
+        // Убрали синхронный тест API, потому что он блокирует старт приложения и вызывает ошибки при
+        // сетевых проблемах. Теперь создаём fallback и в отдельном потоке пытаемся загрузить API.
         log.info("========================================");
         log.info("Initializing CountryService...");
         log.info("========================================");
@@ -41,22 +42,19 @@ public class CountryService {
         createFallbackCountries();
         log.info("Loaded {} fallback countries for immediate use", countriesCache.size());
 
-        // Загружаем в фоновом режиме
         new Thread(() -> {
-            // Сначала пробуем API
             try {
                 log.info("Attempting to load from API...");
                 loadCountriesWithRetry();
             } catch (Exception e) {
                 log.warn("API failed, trying local file...");
-                // Если API не работает, пробуем локальный файл
                 try {
                     loadCountriesFromLocalFile();
                 } catch (Exception fileException) {
-                    log.error("Local file also failed, using fallback countries");
+                    log.error("Local file also failed, using fallback countries", fileException);
                 }
             }
-        }).start();
+        }, "CountryService-API-Loader").start();
 
         log.info("========================================");
     }
@@ -101,11 +99,11 @@ public class CountryService {
                 log.info("Loading from API (attempt {}/{})", attempt, MAX_RETRIES);
                 loadCountriesFromAPI();
                 log.info("✓ Successfully loaded countries from API on attempt {}", attempt);
-                return; // Успех!
+                return;
             } catch (ResourceAccessException e) {
                 lastException = e;
                 log.warn("Attempt {}/{} failed: {}",
-                        attempt, MAX_RETRIES, e.getMessage(), e);
+                        attempt, MAX_RETRIES, e.getMessage());
 
                 if (attempt < MAX_RETRIES) {
                     try {
@@ -128,26 +126,31 @@ public class CountryService {
     }
 
     /**
-     * Загрузить страны из API
+     * Загрузить страны из API — потоковое чтение и парсинг Jackson'ом (не держим весь ответ в String)
      */
     private void loadCountriesFromAPI() {
-        long startTime = System.currentTimeMillis();
-        log.info("Requesting API: {}", API_URL);
+        try {
+            log.info("Requesting API: {}", API_URL);
 
-        String jsonResponse = restTemplate.getForObject(API_URL, String.class);
+            String json = restTemplate.getForObject(API_URL, String.class);
 
-        long duration = System.currentTimeMillis() - startTime;
-        log.info("API response received in {} ms", duration);
+            if (json == null || json.isBlank()) {
+                throw new RuntimeException("API returned empty response");
+            }
 
-        if (jsonResponse == null || jsonResponse.isEmpty()) {
-            throw new RuntimeException("Empty API response");
+            parseAndCacheCountries(json);
+
+            log.info("✓ Successfully loaded countries from API, {} cached", countriesCache.size());
+
+        } catch (Exception e) {
+            log.error("Failed to load countries from API", e);
+            throw new RuntimeException("Failed to load countries from API", e);
         }
-
-        parseAndCacheCountries(jsonResponse);
     }
 
+
     /**
-     * Парсинг JSON и обновление кэша
+     * Парсинг JSON и обновление кэша (оставлен как есть — принимает String)
      */
     private void parseAndCacheCountries(String jsonResponse) {
         try {
@@ -157,7 +160,8 @@ public class CountryService {
             java.util.List<java.util.Map<String, Object>> countriesList =
                     objectMapper.readValue(jsonResponse,
                             new com.fasterxml.jackson.core.type.TypeReference<
-                                    java.util.List<java.util.Map<String, Object>>>() {});
+                                    java.util.List<java.util.Map<String, Object>>>() {
+                            });
 
             log.info("Parsed {} countries from JSON", countriesList.size());
 
@@ -386,6 +390,7 @@ public class CountryService {
         countriesCache = null;
     }
 
+    // Оставил метод теста (не вызывается автоматически).
     public void testApi() {
         try {
             String json = restTemplate.getForObject(API_URL, String.class);

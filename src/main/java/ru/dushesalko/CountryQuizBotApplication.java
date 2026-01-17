@@ -20,7 +20,6 @@ public class CountryQuizBotApplication {
      * @param args аргументы командной строки
      */
     public static void main(String[] args) {
-        // Запуск Spring Boot приложения
         SpringApplication.run(CountryQuizBotApplication.class, args);
     }
 }

@@ -21,15 +21,14 @@ import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKe
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 
 /**
  * Главный класс Telegram бота
- *
+ * <p>
  * TelegramLongPollingBot - базовый класс для Long Polling режима
  * Long Polling - бот постоянно опрашивает Telegram сервер на наличие новых сообщений
- *
+ * <p>
  * Альтернатива: TelegramWebhookBot (для Webhook режима)
  */
 @Component
@@ -82,18 +81,14 @@ public class TelegramBot extends TelegramLongPollingBot {
         log.info("========================================");
 
         try {
-            // Обработка текстовых сообщений
             if (update.hasMessage() && update.getMessage().hasText()) {
                 handleMessage(update.getMessage());
-            }
-            // Обработка нажатий на кнопки (callback)
-            else if (update.hasCallbackQuery()) {
+            } else if (update.hasCallbackQuery()) {
                 handleCallbackQuery(update.getCallbackQuery());
             }
         } catch (Exception e) {
             log.error("Error processing update: {}", update, e);
 
-            // Попробовать отправить сообщение об ошибке пользователю
             Long chatId = null;
             if (update.hasMessage()) {
                 chatId = update.getMessage().getChatId();
@@ -177,19 +172,15 @@ public class TelegramBot extends TelegramLongPollingBot {
      */
     private void handlePlayCommand(Long chatId) {
         try {
-            // Проверить есть ли активная игра
             gameService.getActiveSession(chatId).ifPresent(session -> {
                 gameService.abandonActiveGame(chatId);
             });
 
-            // Начать новую игру
             GameSession session = gameService.startNewGame(chatId);
 
-            // Получить варианты ответа
             CountryDTO correctCountry = countryService.findByCode(session.getCountryCode());
             List<CountryDTO> options = countryService.getGameOptions(correctCountry, 4);
 
-            // Отправить флаг с кнопками
             sendGameQuestion(chatId, session, options);
 
         } catch (Exception e) {
@@ -203,17 +194,14 @@ public class TelegramBot extends TelegramLongPollingBot {
      */
     private void sendGameQuestion(Long chatId, GameSession session, List<CountryDTO> options) {
         try {
-            // Создать фото с флагом
             SendPhoto photo = new SendPhoto();
             photo.setChatId(chatId);
             photo.setPhoto(new InputFile(session.getFlagUrl()));
             photo.setCaption("🏳️ Что это за страна?");
 
-            // Создать клавиатуру с вариантами ответа
             InlineKeyboardMarkup keyboard = createAnswerKeyboard(session.getId(), options);
             photo.setReplyMarkup(keyboard);
 
-            // Отправить
             execute(photo);
 
         } catch (TelegramApiException e) {
@@ -228,17 +216,14 @@ public class TelegramBot extends TelegramLongPollingBot {
         InlineKeyboardMarkup markup = new InlineKeyboardMarkup();
         List<List<InlineKeyboardButton>> keyboard = new ArrayList<>();
 
-        // Создать кнопки (по 2 в ряд)
         for (int i = 0; i < options.size(); i += 2) {
             List<InlineKeyboardButton> row = new ArrayList<>();
 
-            // Первая кнопка в ряду
             InlineKeyboardButton button1 = new InlineKeyboardButton();
             button1.setText(options.get(i).getName());
             button1.setCallbackData("answer:" + sessionId + ":" + options.get(i).getName());
             row.add(button1);
 
-            // Вторая кнопка (если есть)
             if (i + 1 < options.size()) {
                 InlineKeyboardButton button2 = new InlineKeyboardButton();
                 button2.setText(options.get(i + 1).getName());
@@ -263,14 +248,12 @@ public class TelegramBot extends TelegramLongPollingBot {
 
         log.info("Received callback from {}: {}", chatId, data);
 
-        // Обработка "Играть ещё"
         if (data.equals("play_again")) {
             removeKeyboard(chatId, messageId);
             handlePlayCommand(chatId);
             return;
         }
 
-        // Парсинг callback data: "answer:sessionId:countryName"
         String[] parts = data.split(":", 3);
 
         if (parts.length == 3 && parts[0].equals("answer")) {
@@ -286,17 +269,13 @@ public class TelegramBot extends TelegramLongPollingBot {
      */
     private void handleAnswer(Long chatId, Integer messageId, Long sessionId, String userAnswer) {
         try {
-            // Проверить ответ
             GameSession session = gameService.checkAnswer(sessionId, userAnswer);
 
-            // Удалить клавиатуру с вопросом
             removeKeyboard(chatId, messageId);
 
-            // Отправить результат
             String resultMessage = gameService.formatGameResult(session);
             sendMessage(chatId, resultMessage);
 
-            // Предложить сыграть ещё раз
             sendPlayAgainButton(chatId);
 
         } catch (Exception e) {

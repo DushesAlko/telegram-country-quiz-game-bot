@@ -27,19 +27,20 @@ public class UserService {
     /**
      * Dependency Injection через конструктор
      * final - поле инициализируется один раз
+     *
      * @RequiredArgsConstructor создаст конструктор автоматически
      */
     private final UserRepository userRepository;
 
     /**
      * Получить пользователя по chat ID или создать нового
-     *
+     * <p>
      * Этот метод вызывается при каждом сообщении от пользователя
      *
-     * @param chatId Telegram chat ID
-     * @param username Telegram username (может быть null)
+     * @param chatId    Telegram chat ID
+     * @param username  Telegram username (может быть null)
      * @param firstName Имя пользователя
-     * @param lastName Фамилия пользователя
+     * @param lastName  Фамилия пользователя
      * @return существующий или новый пользователь
      */
     public User getOrCreateUser(Long chatId, String username,
@@ -97,9 +98,9 @@ public class UserService {
     /**
      * Обновить статистику пользователя после игры
      *
-     * @param user пользователь
+     * @param user      пользователь
      * @param isCorrect правильный ли был ответ
-     * @param points количество очков
+     * @param points    количество очков
      * @return обновлённый пользователь
      */
     public User updateUserStats(User user, boolean isCorrect, int points) {

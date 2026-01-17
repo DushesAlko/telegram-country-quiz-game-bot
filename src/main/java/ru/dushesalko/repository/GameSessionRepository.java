@@ -22,27 +22,16 @@ public interface GameSessionRepository extends JpaRepository<GameSession, Long> 
 
     /**
      * Найти все сессии пользователя
-     *
-     * SQL: SELECT * FROM game_sessions WHERE user_id = ?
-     *
-     * User user - Spring автоматически возьмёт user.id
      */
     List<GameSession> findByUser(User user);
 
     /**
      * Найти сессии пользователя по статусу
-     *
-     * SQL: SELECT * FROM game_sessions
-     *      WHERE user_id = ? AND status = ?
      */
     List<GameSession> findByUserAndStatus(User user, GameStatus status);
 
     /**
      * Найти активную (незавершённую) сессию пользователя
-     *
-     * SQL: SELECT * FROM game_sessions
-     *      WHERE user_id = ? AND status = 'IN_PROGRESS'
-     *      LIMIT 1
      */
     Optional<GameSession> findFirstByUserAndStatusOrderByPlayedAtDesc(
             User user,
@@ -51,16 +40,11 @@ public interface GameSessionRepository extends JpaRepository<GameSession, Long> 
 
     /**
      * Найти все правильные ответы пользователя
-     *
-     * SQL: SELECT * FROM game_sessions
-     *      WHERE user_id = ? AND is_correct = true
      */
     List<GameSession> findByUserAndIsCorrect(User user, Boolean isCorrect);
 
     /**
      * Подсчитать количество игр пользователя
-     *
-     * SQL: SELECT COUNT(*) FROM game_sessions WHERE user_id = ?
      */
     long countByUser(User user);
 
@@ -71,26 +55,16 @@ public interface GameSessionRepository extends JpaRepository<GameSession, Long> 
 
     /**
      * Найти последние N игр пользователя
-     *
-     * SQL: SELECT * FROM game_sessions
-     *      WHERE user_id = ?
-     *      ORDER BY played_at DESC
-     *      LIMIT ?
      */
     List<GameSession> findTop10ByUserOrderByPlayedAtDesc(User user);
 
     /**
      * Найти игры по стране
-     *
-     * SQL: SELECT * FROM game_sessions WHERE country_code = ?
      */
     List<GameSession> findByCountryCode(String countryCode);
 
     /**
      * Найти игры за период времени
-     *
-     * SQL: SELECT * FROM game_sessions
-     *      WHERE played_at BETWEEN ? AND ?
      */
     List<GameSession> findByPlayedAtBetween(
             LocalDateTime startDate,
@@ -99,18 +73,15 @@ public interface GameSessionRepository extends JpaRepository<GameSession, Long> 
 
     /**
      * Найти игры пользователя за сегодня
-     *
-     * SQL: SELECT * FROM game_sessions
-     *      WHERE user_id = ? AND played_at >= ?
      */
     List<GameSession> findByUserAndPlayedAtAfter(User user, LocalDateTime date);
 
     /**
      * Пагинация - постраничный вывод
-     *
+     * <p>
      * Pageable - параметры пагинации (номер страницы, размер)
      * Page<GameSession> - результат с метаданными (всего страниц, элементов)
-     *
+     * <p>
      * Использование:
      * Pageable pageable = PageRequest.of(0, 10); // страница 0, размер 10
      * Page<GameSession> page = repository.findByUser(user, pageable);
@@ -119,12 +90,12 @@ public interface GameSessionRepository extends JpaRepository<GameSession, Long> 
 
     /**
      * Кастомный запрос - статистика по стране
-     *
+     * <p>
      * Возвращает объект с:
      * - countryCode
      * - totalGames (сколько раз играли эту страну)
      * - correctAnswers (сколько раз угадали)
-     *
+     * <p>
      * Projection - возврат не Entity, а кастомного объекта
      */
     @Query("SELECT g.countryCode as countryCode, " +
@@ -153,7 +124,7 @@ public interface GameSessionRepository extends JpaRepository<GameSession, Long> 
 
     /**
      * Найти самые сложные страны (наименьший процент правильных ответов)
-     *
+     * <p>
      * Native SQL для сложных вычислений
      */
     @Query(value =
@@ -177,14 +148,19 @@ public interface GameSessionRepository extends JpaRepository<GameSession, Long> 
      */
     interface CountryStatistics {
         String getCountryCode();
+
         Long getTotalGames();
+
         Long getCorrectAnswers();
     }
 
     interface UserStatistics {
         Long getTotalGames();
+
         Long getCorrectAnswers();
+
         Long getTotalPoints();
+
         Double getAvgTimeSpent();
     }
 }

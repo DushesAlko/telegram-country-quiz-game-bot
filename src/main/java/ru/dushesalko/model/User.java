@@ -9,15 +9,15 @@ import java.time.LocalDateTime;
 
 /**
  * Entity класс для пользователя бота
- *
+ * <p>
  * Соответствует таблице "users" в базе данных
  */
-@Entity                                    // JPA аннотация - это Entity
-@Table(name = "users")                     // Название таблицы в БД
-@Data                                      // Lombok: getters, setters, toString, equals, hashCode
-@NoArgsConstructor                         // Lombok: конструктор без параметров (нужен для JPA)
-@AllArgsConstructor                        // Lombok: конструктор со всеми параметрами
-@Builder                                   // Lombok: паттерн Builder
+@Entity
+@Table(name = "users")
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
 public class User {
 
     /**
@@ -65,7 +65,7 @@ public class User {
      * Общее количество очков
      */
     @Column(nullable = false)
-    @Builder.Default                        // Значение по умолчанию для Builder
+    @Builder.Default
     private Integer totalScore = 0;
 
     /**
@@ -100,6 +100,7 @@ public class User {
 
     /**
      * Вычисляемое поле - процент правильных ответов
+     *
      * @Transient - не сохраняется в БД
      */
     @Transient
@@ -115,7 +116,7 @@ public class User {
      * Метод для обновления статистики после игры
      *
      * @param isCorrect правильный ли был ответ
-     * @param points количество очков
+     * @param points    количество очков
      */
     public void updateStats(boolean isCorrect, int points) {
         this.totalScore += points;
