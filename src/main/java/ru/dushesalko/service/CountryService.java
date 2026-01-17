@@ -4,9 +4,13 @@ import ru.dushesalko.dto.CountryDTO;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
+import org.springframework.web.client.ResourceAccessException;
 
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -20,33 +24,37 @@ public class CountryService {
 
     private final RestTemplate restTemplate;
 
-    // URL REST Countries API с явным указанием полей
     private static final String API_URL = "https://restcountries.com/v3.1/all?fields=name,cca3,flags,capital,region,population";
+    private static final String LOCAL_JSON_FILE = "all.json"; // В resources
+    private static final int MAX_RETRIES = 2;
+    private static final int RETRY_DELAY_MS = 2000;
 
-    // Кэш стран (чтобы не запрашивать API каждый раз)
     private List<CountryDTO> countriesCache = null;
 
-    /**
-     * Инициализация - загрузить страны при старте приложения
-     * @PostConstruct - метод вызывается автоматически после создания bean
-     */
     @PostConstruct
     public void init() {
+        testApi();
         log.info("========================================");
         log.info("Initializing CountryService...");
         log.info("========================================");
 
-        // Загружаем fallback страны сразу, чтобы бот мог работать
         createFallbackCountries();
         log.info("Loaded {} fallback countries for immediate use", countriesCache.size());
 
-        // Пытаемся загрузить полный список в фоновом режиме
+        // Загружаем в фоновом режиме
         new Thread(() -> {
+            // Сначала пробуем API
             try {
-                log.info("Attempting to load full country list from API...");
-                loadCountries();
+                log.info("Attempting to load from API...");
+                loadCountriesWithRetry();
             } catch (Exception e) {
-                log.warn("Could not load full country list, using fallback: {}", e.getMessage());
+                log.warn("API failed, trying local file...");
+                // Если API не работает, пробуем локальный файл
+                try {
+                    loadCountriesFromLocalFile();
+                } catch (Exception fileException) {
+                    log.error("Local file also failed, using fallback countries");
+                }
             }
         }).start();
 
@@ -54,208 +62,156 @@ public class CountryService {
     }
 
     /**
-     * Получить все страны из API
-     *
-     * @return список всех стран
+     * Загрузка из локального JSON файла
      */
-    public List<CountryDTO> getAllCountries() {
-        // Если кэш пустой - загрузить страны
-        if (countriesCache == null || countriesCache.isEmpty()) {
-            log.info("Loading countries from API...");
-            loadCountries();
+    private void loadCountriesFromLocalFile() {
+        try {
+            log.info("Loading countries from local file: {}", LOCAL_JSON_FILE);
+
+            ClassPathResource resource = new ClassPathResource(LOCAL_JSON_FILE);
+            if (!resource.exists()) {
+                log.warn("Local file {} not found in resources", LOCAL_JSON_FILE);
+                return;
+            }
+
+            String jsonResponse = new String(
+                    resource.getInputStream().readAllBytes(),
+                    StandardCharsets.UTF_8
+            );
+
+            parseAndCacheCountries(jsonResponse);
+            log.info("✓ Successfully loaded countries from local file");
+
+        } catch (IOException e) {
+            log.error("Error reading local file: {}", e.getMessage());
+            throw new RuntimeException("Failed to read local file", e);
         }
-        return countriesCache;
+    }
+
+    /**
+     * Загрузка стран с повторными попытками
+     */
+    private void loadCountriesWithRetry() {
+        int attempt = 0;
+        Exception lastException = null;
+
+        while (attempt < MAX_RETRIES) {
+            attempt++;
+            try {
+                log.info("Loading from API (attempt {}/{})", attempt, MAX_RETRIES);
+                loadCountriesFromAPI();
+                log.info("✓ Successfully loaded countries from API on attempt {}", attempt);
+                return; // Успех!
+            } catch (ResourceAccessException e) {
+                lastException = e;
+                log.warn("Attempt {}/{} failed: {}",
+                        attempt, MAX_RETRIES, e.getMessage(), e);
+
+                if (attempt < MAX_RETRIES) {
+                    try {
+                        log.info("Waiting {} ms before retry...", RETRY_DELAY_MS);
+                        Thread.sleep(RETRY_DELAY_MS);
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                        break;
+                    }
+                }
+            } catch (Exception e) {
+                lastException = e;
+                log.error("Unexpected error: {}", e.getMessage());
+                break;
+            }
+        }
+
+        log.error("Failed to load from API after {} attempts", MAX_RETRIES);
+        throw new RuntimeException("API loading failed", lastException);
     }
 
     /**
      * Загрузить страны из API
      */
-    private void loadCountries() {
+    private void loadCountriesFromAPI() {
+        long startTime = System.currentTimeMillis();
+        log.info("Requesting API: {}", API_URL);
+
+        String jsonResponse = restTemplate.getForObject(API_URL, String.class);
+
+        long duration = System.currentTimeMillis() - startTime;
+        log.info("API response received in {} ms", duration);
+
+        if (jsonResponse == null || jsonResponse.isEmpty()) {
+            throw new RuntimeException("Empty API response");
+        }
+
+        parseAndCacheCountries(jsonResponse);
+    }
+
+    /**
+     * Парсинг JSON и обновление кэша
+     */
+    private void parseAndCacheCountries(String jsonResponse) {
         try {
-            log.info("Loading countries from API: {}", API_URL);
-
-            long startTime = System.currentTimeMillis();
-
-            // Используем String.class вместо Map[].class
-            String jsonResponse = restTemplate.getForObject(API_URL, String.class);
-
-            long duration = System.currentTimeMillis() - startTime;
-            log.info("API response received in {} ms", duration);
-
-            if (jsonResponse == null || jsonResponse.isEmpty()) {
-                log.warn("Empty response from API");
-                return;
-            }
-
-            // Парсим JSON вручную используя Jackson
             com.fasterxml.jackson.databind.ObjectMapper objectMapper =
                     new com.fasterxml.jackson.databind.ObjectMapper();
 
             java.util.List<java.util.Map<String, Object>> countriesList =
                     objectMapper.readValue(jsonResponse,
-                            new com.fasterxml.jackson.core.type.TypeReference<java.util.List<java.util.Map<String, Object>>>() {});
+                            new com.fasterxml.jackson.core.type.TypeReference<
+                                    java.util.List<java.util.Map<String, Object>>>() {});
 
-            log.info("Received {} countries from API", countriesList.size());
+            log.info("Parsed {} countries from JSON", countriesList.size());
 
-            // Преобразовать в DTO
             List<CountryDTO> newCache = countriesList.stream()
                     .map(this::mapToCountryDTO)
                     .filter(Objects::nonNull)
                     .collect(Collectors.toList());
 
-            // Обновить кэш только если получили данные
             if (!newCache.isEmpty()) {
                 countriesCache = newCache;
-                log.info("✓ Successfully loaded {} countries from API", countriesCache.size());
+                log.info("✓ Cached {} countries", countriesCache.size());
             } else {
-                log.warn("Failed to parse any countries from API response");
+                log.warn("No valid countries parsed");
             }
 
-        } catch (org.springframework.web.client.ResourceAccessException e) {
-            log.error("Connection timeout or network error: {}", e.getMessage());
-            log.info("Using fallback countries");
         } catch (Exception e) {
-            log.error("Error loading countries from API: {}", e.getMessage());
-            log.info("Using fallback countries");
+            log.error("JSON parsing error: {}", e.getMessage(), e);
+            throw new RuntimeException("JSON parsing failed", e);
         }
     }
 
-    /**
-     * Создать базовый список стран (на случай недоступности API)
-     */
-    private void createFallbackCountries() {
-        countriesCache = Arrays.asList(
-                CountryDTO.builder()
-                        .name("United States")
-                        .code("USA")
-                        .flagUrl("https://flagcdn.com/w320/us.png")
-                        .capital("Washington D.C.")
-                        .region("Americas")
-                        .build(),
-                CountryDTO.builder()
-                        .name("Russia")
-                        .code("RUS")
-                        .flagUrl("https://flagcdn.com/w320/ru.png")
-                        .capital("Moscow")
-                        .region("Europe")
-                        .build(),
-                CountryDTO.builder()
-                        .name("China")
-                        .code("CHN")
-                        .flagUrl("https://flagcdn.com/w320/cn.png")
-                        .capital("Beijing")
-                        .region("Asia")
-                        .build(),
-                CountryDTO.builder()
-                        .name("Germany")
-                        .code("DEU")
-                        .flagUrl("https://flagcdn.com/w320/de.png")
-                        .capital("Berlin")
-                        .region("Europe")
-                        .build(),
-                CountryDTO.builder()
-                        .name("Japan")
-                        .code("JPN")
-                        .flagUrl("https://flagcdn.com/w320/jp.png")
-                        .capital("Tokyo")
-                        .region("Asia")
-                        .build(),
-                CountryDTO.builder()
-                        .name("Brazil")
-                        .code("BRA")
-                        .flagUrl("https://flagcdn.com/w320/br.png")
-                        .capital("Brasília")
-                        .region("Americas")
-                        .build(),
-                CountryDTO.builder()
-                        .name("United Kingdom")
-                        .code("GBR")
-                        .flagUrl("https://flagcdn.com/w320/gb.png")
-                        .capital("London")
-                        .region("Europe")
-                        .build(),
-                CountryDTO.builder()
-                        .name("France")
-                        .code("FRA")
-                        .flagUrl("https://flagcdn.com/w320/fr.png")
-                        .capital("Paris")
-                        .region("Europe")
-                        .build(),
-                CountryDTO.builder()
-                        .name("Italy")
-                        .code("ITA")
-                        .flagUrl("https://flagcdn.com/w320/it.png")
-                        .capital("Rome")
-                        .region("Europe")
-                        .build(),
-                CountryDTO.builder()
-                        .name("Canada")
-                        .code("CAN")
-                        .flagUrl("https://flagcdn.com/w320/ca.png")
-                        .capital("Ottawa")
-                        .region("Americas")
-                        .build(),
-                CountryDTO.builder()
-                        .name("Australia")
-                        .code("AUS")
-                        .flagUrl("https://flagcdn.com/w320/au.png")
-                        .capital("Canberra")
-                        .region("Oceania")
-                        .build(),
-                CountryDTO.builder()
-                        .name("India")
-                        .code("IND")
-                        .flagUrl("https://flagcdn.com/w320/in.png")
-                        .capital("New Delhi")
-                        .region("Asia")
-                        .build()
-        );
-        log.info("Fallback countries created: {} countries", countriesCache.size());
+    public List<CountryDTO> getAllCountries() {
+        if (countriesCache == null || countriesCache.isEmpty()) {
+            log.warn("Cache is empty!");
+            createFallbackCountries();
+        }
+        return countriesCache;
     }
 
-    /**
-     * Преобразовать Map из API в CountryDTO
-     *
-     * @param countryData данные о стране из API
-     * @return CountryDTO или null если данные некорректны
-     */
     @SuppressWarnings("unchecked")
     private CountryDTO mapToCountryDTO(Map<String, Object> countryData) {
         try {
-            // Получить название (структура: name.common)
             Map<String, Object> nameObj = (Map<String, Object>) countryData.get("name");
-            if (nameObj == null) {
-                return null;
-            }
-            String commonName = (String) nameObj.get("common");
+            if (nameObj == null) return null;
 
-            // Получить код страны (cca3)
+            String commonName = (String) nameObj.get("common");
             String code = (String) countryData.get("cca3");
 
-            // Получить флаг (структура: flags.png)
             Map<String, Object> flagsObj = (Map<String, Object>) countryData.get("flags");
-            if (flagsObj == null) {
-                return null;
-            }
+            if (flagsObj == null) return null;
+
             String flagUrl = (String) flagsObj.get("png");
 
-            // Получить столицу (массив capital)
             List<String> capitals = (List<String>) countryData.get("capital");
-            String capital = (capitals != null && !capitals.isEmpty())
-                    ? capitals.get(0)
-                    : null;
+            String capital = (capitals != null && !capitals.isEmpty()) ? capitals.get(0) : null;
 
-            // Получить регион
             String region = (String) countryData.get("region");
 
-            // Получить население
-            Object populationObj = countryData.get("population");
             Long population = null;
+            Object populationObj = countryData.get("population");
             if (populationObj instanceof Number) {
                 population = ((Number) populationObj).longValue();
             }
 
-            // Проверка обязательных полей
             if (commonName == null || code == null || flagUrl == null) {
                 return null;
             }
@@ -270,136 +226,173 @@ public class CountryService {
                     .build();
 
         } catch (Exception e) {
-            log.warn("Failed to parse country data: {}", e.getMessage());
+            log.debug("Failed to parse country: {}", e.getMessage());
             return null;
         }
     }
 
-    /**
-     * Получить случайную страну
-     *
-     * @return случайная страна
-     */
+    private void createFallbackCountries() {
+        countriesCache = Arrays.asList(
+                CountryDTO.builder()
+                        .name("United States")
+                        .code("USA")
+                        .flagUrl("https://flagcdn.com/w320/us.png")
+                        .capital("Washington D.C.")
+                        .region("Americas")
+                        .population(340110988L)
+                        .build(),
+                CountryDTO.builder()
+                        .name("Russia")
+                        .code("RUS")
+                        .flagUrl("https://flagcdn.com/w320/ru.png")
+                        .capital("Moscow")
+                        .region("Europe")
+                        .population(146028325L)
+                        .build(),
+                CountryDTO.builder()
+                        .name("China")
+                        .code("CHN")
+                        .flagUrl("https://flagcdn.com/w320/cn.png")
+                        .capital("Beijing")
+                        .region("Asia")
+                        .population(1408280000L)
+                        .build(),
+                CountryDTO.builder()
+                        .name("Germany")
+                        .code("DEU")
+                        .flagUrl("https://flagcdn.com/w320/de.png")
+                        .capital("Berlin")
+                        .region("Europe")
+                        .population(83491249L)
+                        .build(),
+                CountryDTO.builder()
+                        .name("Japan")
+                        .code("JPN")
+                        .flagUrl("https://flagcdn.com/w320/jp.png")
+                        .capital("Tokyo")
+                        .region("Asia")
+                        .population(123210000L)
+                        .build(),
+                CountryDTO.builder()
+                        .name("Brazil")
+                        .code("BRA")
+                        .flagUrl("https://flagcdn.com/w320/br.png")
+                        .capital("Brasília")
+                        .region("Americas")
+                        .population(213421037L)
+                        .build(),
+                CountryDTO.builder()
+                        .name("United Kingdom")
+                        .code("GBR")
+                        .flagUrl("https://flagcdn.com/w320/gb.png")
+                        .capital("London")
+                        .region("Europe")
+                        .population(69281437L)
+                        .build(),
+                CountryDTO.builder()
+                        .name("France")
+                        .code("FRA")
+                        .flagUrl("https://flagcdn.com/w320/fr.png")
+                        .capital("Paris")
+                        .region("Europe")
+                        .population(66351959L)
+                        .build(),
+                CountryDTO.builder()
+                        .name("Italy")
+                        .code("ITA")
+                        .flagUrl("https://flagcdn.com/w320/it.png")
+                        .capital("Rome")
+                        .region("Europe")
+                        .population(58927633L)
+                        .build(),
+                CountryDTO.builder()
+                        .name("Canada")
+                        .code("CAN")
+                        .flagUrl("https://flagcdn.com/w320/ca.png")
+                        .capital("Ottawa")
+                        .region("Americas")
+                        .population(41651653L)
+                        .build(),
+                CountryDTO.builder()
+                        .name("Australia")
+                        .code("AUS")
+                        .flagUrl("https://flagcdn.com/w320/au.png")
+                        .capital("Canberra")
+                        .region("Oceania")
+                        .population(27536874L)
+                        .build(),
+                CountryDTO.builder()
+                        .name("India")
+                        .code("IND")
+                        .flagUrl("https://flagcdn.com/w320/in.png")
+                        .capital("New Delhi")
+                        .region("Asia")
+                        .population(1417492000L)
+                        .build()
+        );
+        log.info("Fallback countries created: {} countries", countriesCache.size());
+    }
+
     public CountryDTO getRandomCountry() {
         List<CountryDTO> countries = getAllCountries();
-
         if (countries.isEmpty()) {
             throw new RuntimeException("No countries available");
         }
-
         Random random = new Random();
-        int index = random.nextInt(countries.size());
-
-        CountryDTO selectedCountry = countries.get(index);
-        log.debug("Selected random country: {}", selectedCountry.getName());
-
-        return selectedCountry;
+        return countries.get(random.nextInt(countries.size()));
     }
 
-    /**
-     * Получить N случайных стран для вариантов ответа
-     *
-     * @param count количество стран
-     * @param excludeCode код страны для исключения (правильный ответ)
-     * @return список случайных стран
-     */
     public List<CountryDTO> getRandomCountries(int count, String excludeCode) {
         List<CountryDTO> countries = getAllCountries();
-
-        // Убрать правильный ответ из списка
         List<CountryDTO> filtered = countries.stream()
                 .filter(c -> !c.getCode().equals(excludeCode))
                 .collect(Collectors.toList());
-
-        // Перемешать и взять N первых
         Collections.shuffle(filtered);
-
-        return filtered.stream()
-                .limit(count)
-                .collect(Collectors.toList());
+        return filtered.stream().limit(count).collect(Collectors.toList());
     }
 
-    /**
-     * Получить варианты ответа для игры
-     *
-     * @param correctCountry правильная страна
-     * @param optionsCount общее количество вариантов
-     * @return список стран (включая правильную)
-     */
     public List<CountryDTO> getGameOptions(CountryDTO correctCountry, int optionsCount) {
-        log.debug("Generating {} options for country: {}",
-                optionsCount, correctCountry.getName());
-
-        // Получить неправильные варианты
-        List<CountryDTO> options = getRandomCountries(
-                optionsCount - 1,
-                correctCountry.getCode()
-        );
-
-        // Добавить правильный ответ
+        List<CountryDTO> options = getRandomCountries(optionsCount - 1, correctCountry.getCode());
         options.add(correctCountry);
-
-        // Перемешать, чтобы правильный ответ был в случайной позиции
         Collections.shuffle(options);
-
         return options;
     }
 
-    /**
-     * Найти страну по коду
-     *
-     * @param code код страны (ISO 3166-1 alpha-3)
-     * @return страна или null если не найдена
-     */
     public CountryDTO findByCode(String code) {
         return getAllCountries().stream()
                 .filter(c -> c.getCode().equalsIgnoreCase(code))
-                .findFirst()
-                .orElse(null);
+                .findFirst().orElse(null);
     }
 
-    /**
-     * Найти страну по названию
-     *
-     * @param name название страны
-     * @return страна или null если не найдена
-     */
     public CountryDTO findByName(String name) {
         return getAllCountries().stream()
                 .filter(c -> c.getName().equalsIgnoreCase(name))
-                .findFirst()
-                .orElse(null);
+                .findFirst().orElse(null);
     }
 
-    /**
-     * Поиск стран по части названия
-     *
-     * @param query поисковый запрос
-     * @return список найденных стран
-     */
     public List<CountryDTO> searchCountries(String query) {
         String lowerQuery = query.toLowerCase();
-
         return getAllCountries().stream()
                 .filter(c -> c.getName().toLowerCase().contains(lowerQuery))
-                .limit(10)  // Максимум 10 результатов
-                .collect(Collectors.toList());
+                .limit(10).collect(Collectors.toList());
     }
 
-    /**
-     * Получить количество стран в кэше
-     *
-     * @return количество стран
-     */
     public int getCountriesCount() {
         return getAllCountries().size();
     }
 
-    /**
-     * Очистить кэш (для обновления данных)
-     */
     public void clearCache() {
-        log.info("Clearing countries cache");
+        log.info("Clearing cache");
         countriesCache = null;
     }
+
+    public void testApi() {
+        try {
+            String json = restTemplate.getForObject(API_URL, String.class);
+            System.out.println("API response length: " + (json != null ? json.length() : 0));
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
 }

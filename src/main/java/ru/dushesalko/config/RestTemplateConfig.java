@@ -2,30 +2,25 @@ package ru.dushesalko.config;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.web.client.RestTemplate;
 
 /**
- * Конфигурация HTTP клиента
+ * Конфигурация RestTemplate с увеличенными таймаутами
  */
 @Configuration
-class RestTemplateConfig {
+public class RestTemplateConfig {
 
-    /**
-     * Bean для RestTemplate с таймаутами
-     * RestTemplate - Spring класс для HTTP запросов
-     *
-     * @Bean - метод создаёт Spring Bean
-     * Этот объект можно инжектить в другие классы
-     */
     @Bean
     public RestTemplate restTemplate() {
-        // Создаём фабрику с таймаутами
-        org.springframework.http.client.SimpleClientHttpRequestFactory factory =
-                new org.springframework.http.client.SimpleClientHttpRequestFactory();
+        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
 
-        // Таймауты в миллисекундах
-        factory.setConnectTimeout(5000);  // 5 секунд на подключение
-        factory.setReadTimeout(10000);     // 10 секунд на чтение
+        // Таймаут на установку соединения - 10 секунд (10000 мс)
+        factory.setConnectTimeout(5000);
+
+        // Таймаут на чтение данных - 30 секунд (30000 мс)
+        // REST Countries API может быть медленным
+        factory.setReadTimeout(100000);
 
         return new RestTemplate(factory);
     }
