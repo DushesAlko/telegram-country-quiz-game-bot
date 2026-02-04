@@ -60,3 +60,5 @@ docker-compose up --build
 ```bash
 mvn clean install
 ```
+---
+Файл `report.pdf` - отчёт по проделанной работе.
