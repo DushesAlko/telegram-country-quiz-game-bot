@@ -128,7 +128,7 @@ public class CountryService {
     /**
      * Загрузить страны из API — потоковое чтение и парсинг Jackson'ом (не держим весь ответ в String)
      */
-    private void loadCountriesFromAPI() {
+    void loadCountriesFromAPI() {
         try {
             log.info("Requesting API: {}", API_URL);
 
