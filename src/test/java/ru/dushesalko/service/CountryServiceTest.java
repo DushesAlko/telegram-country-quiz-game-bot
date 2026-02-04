@@ -1,49 +1,41 @@
 package ru.dushesalko.service;
 
+import ru.dushesalko.dto.CountryDTO;
+
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.core.io.ClassPathResource;
-import org.springframework.http.HttpMethod;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
+import org.mockito.Mockito;
 import org.springframework.web.client.RestTemplate;
 
-import java.nio.charset.StandardCharsets;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-@SpringBootTest
 class CountryServiceTest {
 
-    @Autowired
-    private CountryService countryService;
-
-    private static final String API_URL = "https://restcountries.com/v3.1/all?fields=name,cca3,flags,capital,region,population";
+    private final CountryService countryService =
+            new CountryService(Mockito.mock(RestTemplate.class));
 
     @Test
-    void testApiHeaderOk() {
-        RestTemplate restTemplate = new RestTemplate();
-        ResponseEntity<String> response = restTemplate.exchange(API_URL, HttpMethod.HEAD, null, String.class);
-
-        assertEquals(HttpStatus.OK, response.getStatusCode(), "API should return 200 OK on HEAD request");
+    void getRandomCountry_shouldReturnCountry() {
+        CountryDTO country = countryService.getRandomCountry();
+        assertNotNull(country);
+        assertNotNull(country.getName());
     }
 
     @Test
-    void testLocalFileParsing() {
-        try {
-            ClassPathResource resource = new ClassPathResource("all.json");
-            assertTrue(resource.exists(), "Local file all.json must exist");
+    void getGameOptions_shouldContainCorrectCountry() {
+        CountryDTO correct = countryService.getRandomCountry();
+        List<CountryDTO> options = countryService.getGameOptions(correct, 4);
 
-            String json = new String(resource.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-            assertFalse(json.isBlank(), "Local JSON file should not be empty");
+        assertEquals(4, options.size());
+        assertTrue(options.stream()
+                .anyMatch(c -> c.getCode().equals(correct.getCode())));
+    }
 
-            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
-            var countriesList = mapper.readValue(json, new com.fasterxml.jackson.core.type.TypeReference<java.util.List<java.util.Map<String,Object>>>() {});
-            assertFalse(countriesList.isEmpty(), "Parsed country list should not be empty");
-
-        } catch (Exception e) {
-            fail("Exception during local file parsing: " + e.getMessage());
-        }
+    @Test
+    void findByCode_shouldReturnCountry() {
+        CountryDTO country = countryService.findByCode("DEU");
+        assertNotNull(country);
+        assertEquals("DEU", country.getCode());
     }
 }
