@@ -25,8 +25,14 @@
 * **Оценка нагрузки**: Система рассчитана на 10 000 пользователей в сутки. При среднем количестве в 20 запросов на пользователя объем трафика составляет около 600 КБ/сутки.
 * **Хранение данных**: Дисковое пространство для хранения данных (игровая статистика, профили) за 5 лет оценивается в 5–10 ГБ с учетом индексов и метаданных.
 * **Масштабирование**: При росте нагрузки в 10 раз используется stateless-подход, позволяющий запускать N экземпляров приложения за балансировщиком (Round Robin). Для базы данных предусмотрена репликация с выделением Master-узла на запись и Slave-узлов на чтение.
+  
+**С4 model system diagram**
+![С4 model system diagram](https://github.com/DushesAlko/telegram-country-quiz-game-bot/blob/master/img/c4_system.png)
 
+**С4 model container diagram**
+![C4 model container diagram](https://github.com/DushesAlko/telegram-country-quiz-game-bot/blob/master/img/c4_container.png)
 
+**Database scheme**
 
 ![Image of database schema](https://github.com/DushesAlko/telegram-country-quiz-game-bot/blob/master/img/database_schema.png)
 
